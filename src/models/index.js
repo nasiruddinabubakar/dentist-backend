@@ -5,6 +5,8 @@ const Service = require('./Service');
 const Appointment = require('./Appointment');
 const Invoice = require('./Invoice');
 const InvoiceItem = require('./InvoiceItem');
+const Doctor = require('./Doctor');
+const SurgeryRoom = require('./SurgeryRoom');
 
 // Define associations
 User.belongsTo(Clinic, { foreignKey: 'clinicId', as: 'clinic' });
@@ -25,6 +27,12 @@ Appointment.belongsTo(Patient, { foreignKey: 'patientId', as: 'patient' });
 Service.hasMany(Appointment, { foreignKey: 'serviceId', as: 'appointments' });
 Appointment.belongsTo(Service, { foreignKey: 'serviceId', as: 'service' });
 
+Doctor.hasMany(Appointment, { foreignKey: 'doctorId', as: 'appointments' });
+Appointment.belongsTo(Doctor, { foreignKey: 'doctorId', as: 'doctor' });
+
+SurgeryRoom.hasMany(Appointment, { foreignKey: 'surgeryRoomId', as: 'appointments' });
+Appointment.belongsTo(SurgeryRoom, { foreignKey: 'surgeryRoomId', as: 'surgeryRoom' });
+
 Clinic.hasMany(Invoice, { foreignKey: 'clinicId', as: 'invoices' });
 Invoice.belongsTo(Clinic, { foreignKey: 'clinicId', as: 'clinic' });
 
@@ -40,6 +48,12 @@ InvoiceItem.belongsTo(Invoice, { foreignKey: 'invoiceId', as: 'invoice' });
 Service.hasMany(InvoiceItem, { foreignKey: 'serviceId', as: 'invoiceItems' });
 InvoiceItem.belongsTo(Service, { foreignKey: 'serviceId', as: 'service' });
 
+Clinic.hasMany(Doctor, { foreignKey: 'clinicId', as: 'doctors' });
+Doctor.belongsTo(Clinic, { foreignKey: 'clinicId', as: 'clinic' });
+
+Clinic.hasMany(SurgeryRoom, { foreignKey: 'clinicId', as: 'surgeryRooms' });
+SurgeryRoom.belongsTo(Clinic, { foreignKey: 'clinicId', as: 'clinic' });
+
 module.exports = {
   User,
   Clinic,
@@ -47,6 +61,8 @@ module.exports = {
   Service,
   Appointment,
   Invoice,
-  InvoiceItem
+  InvoiceItem,
+  Doctor,
+  SurgeryRoom
 };
 

@@ -1,6 +1,7 @@
 const invoiceRepository = require('../repositories/InvoiceRepository');
 const appointmentRepository = require('../repositories/AppointmentRepository');
-const { Service } = require('../models');
+const emailService = require('./EmailService');
+const { Service, Clinic } = require('../models');
 
 class InvoiceService {
   async getInvoices(clinicId) {
@@ -36,17 +37,40 @@ class InvoiceService {
 
     // Calculate totals if items are provided
     if (items && items.length > 0) {
-      const processedItems = items.map(item => {
+      const { Service } = require('../models');
+      
+      const processedItems = await Promise.all(items.map(async (item) => {
         const quantity = item.quantity || 1;
-        const unitPrice = parseFloat(item.unitPrice);
+        let unitPrice = parseFloat(item.unitPrice || item.price || 0);
+        let serviceName = item.serviceName || item.description || 'Service';
+        
+        // If serviceId is provided, get current service details as snapshot
+        if (item.serviceId) {
+          try {
+            const service = await Service.findByPk(item.serviceId);
+            if (service) {
+              // Use current service details but store them as snapshot
+              serviceName = service.name;
+              if (!unitPrice || unitPrice === 0) {
+                unitPrice = parseFloat(service.price);
+              }
+            }
+          } catch (error) {
+            // Service might be deleted, use provided values
+            console.warn('Service not found, using provided values:', error.message);
+          }
+        }
+        
         const total = quantity * unitPrice;
         return {
-          ...item,
+          serviceId: item.serviceId || null, // Keep reference but don't rely on it
+          serviceName: serviceName, // Store actual name as snapshot
+          description: item.serviceName || item.description || serviceName,
           quantity,
           unitPrice,
           total
         };
-      });
+      }));
 
       const subtotal = processedItems.reduce((sum, item) => sum + item.total, 0);
       
@@ -66,17 +90,40 @@ class InvoiceService {
 
     // Recalculate totals if items are provided
     if (items && items.length > 0) {
-      const processedItems = items.map(item => {
+      const { Service } = require('../models');
+      
+      const processedItems = await Promise.all(items.map(async (item) => {
         const quantity = item.quantity || 1;
-        const unitPrice = parseFloat(item.unitPrice);
+        let unitPrice = parseFloat(item.unitPrice || item.price || 0);
+        let serviceName = item.serviceName || item.description || 'Service';
+        
+        // If serviceId is provided, get current service details as snapshot
+        if (item.serviceId) {
+          try {
+            const service = await Service.findByPk(item.serviceId);
+            if (service) {
+              // Use current service details but store them as snapshot
+              serviceName = service.name;
+              if (!unitPrice || unitPrice === 0) {
+                unitPrice = parseFloat(service.price);
+              }
+            }
+          } catch (error) {
+            // Service might be deleted, use provided values
+            console.warn('Service not found, using provided values:', error.message);
+          }
+        }
+        
         const total = quantity * unitPrice;
         return {
-          ...item,
+          serviceId: item.serviceId || null, // Keep reference but don't rely on it
+          serviceName: serviceName, // Store actual name as snapshot
+          description: item.serviceName || item.description || serviceName,
           quantity,
           unitPrice,
           total
         };
-      });
+      }));
 
       const subtotal = processedItems.reduce((sum, item) => sum + item.total, 0);
       
@@ -107,28 +154,24 @@ class InvoiceService {
       throw new Error('Unauthorized access to appointment');
     }
 
-    if (appointment.status !== 'completed') {
-      throw new Error('Invoice can only be generated for completed appointments');
-    }
-
-    // Check if invoice already exists for this appointment
+    // Check if invoice already exists for this appointment (will update if exists)
     const existingInvoice = await invoiceRepository.findOne({
-      where: { appointmentId: appointmentId }
+      where: { appointmentId: appointmentId },
+      include: [
+        { association: 'items' }
+      ]
     });
 
-    if (existingInvoice) {
-      throw new Error('Invoice already exists for this appointment');
-    }
-
-    // Get service details
+    // Get service details (snapshot at time of invoice creation)
     const service = appointment.service;
     if (!service) {
       throw new Error('Service not found for this appointment');
     }
 
-    // Create invoice items from appointment service
+    // Create invoice items with actual service details (snapshot)
     const items = [{
-      serviceId: service.id,
+      serviceId: service.id, // Keep reference but don't rely on it
+      serviceName: service.name, // Store actual name
       description: service.name,
       quantity: 1,
       unitPrice: parseFloat(service.price),
@@ -138,10 +181,23 @@ class InvoiceService {
     const subtotal = parseFloat(service.price);
     const total = subtotal + (tax || 0);
 
-    // Generate invoice number
+    // If invoice exists, update it instead of creating new one
+    if (existingInvoice) {
+      const invoiceData = {
+        subtotal,
+        tax: tax || 0,
+        total,
+        // Don't change status if it's already sent/paid
+        status: existingInvoice.status === 'draft' ? 'draft' : existingInvoice.status
+      };
+
+      return invoiceRepository.updateWithItems(existingInvoice.id, invoiceData, items);
+    }
+
+    // Generate invoice number for new invoice
     const invoiceNumber = await invoiceRepository.generateInvoiceNumber();
 
-    // Create invoice
+    // Create new invoice
     const invoiceData = {
       clinicId: appointment.clinicId,
       patientId: appointment.patientId,
@@ -154,6 +210,46 @@ class InvoiceService {
     };
 
     return invoiceRepository.createWithItems(invoiceData, items);
+  }
+
+  async sendInvoice(id, clinicId, recipientEmail) {
+    const invoice = await this.getInvoiceById(id, clinicId);
+    
+    if (!invoice.patient) {
+      throw new Error('Patient information not found for invoice');
+    }
+
+    // Get clinic information
+    const clinic = await Clinic.findByPk(clinicId);
+    if (!clinic) {
+      throw new Error('Clinic not found');
+    }
+
+    // Validate recipient email
+    if (!recipientEmail) {
+      // Use patient email if available, otherwise throw error
+      if (!invoice.patient.email) {
+        throw new Error('Recipient email is required. Patient email not found.');
+      }
+      recipientEmail = invoice.patient.email;
+    }
+
+    // Send email
+    await emailService.sendInvoice(invoice, clinic, invoice.patient, recipientEmail);
+
+    // Update invoice status to 'sent' if it's currently 'draft'
+    if (invoice.status === 'draft') {
+      await invoiceRepository.update(id, { status: 'sent' });
+      return invoiceRepository.findById(id, {
+        include: [
+          { association: 'patient' },
+          { association: 'appointment' },
+          { association: 'items', include: [{ association: 'service' }] }
+        ]
+      });
+    }
+
+    return invoice;
   }
 }
 

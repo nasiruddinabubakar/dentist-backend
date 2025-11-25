@@ -3,7 +3,13 @@ const appointmentRepository = require('../repositories/AppointmentRepository');
 class AppointmentService {
   async getAppointments(clinicId) {
     return appointmentRepository.findByClinicId(clinicId, {
-      order: [['appointmentDate', 'ASC']]
+      order: [['appointmentDate', 'ASC']],
+      include: [
+        { association: 'patient' },
+        { association: 'service' },
+        { association: 'doctor' },
+        { association: 'surgeryRoom' }
+      ]
     });
   }
 
@@ -11,7 +17,9 @@ class AppointmentService {
     const appointment = await appointmentRepository.findById(id, {
       include: [
         { association: 'patient' },
-        { association: 'service' }
+        { association: 'service' },
+        { association: 'doctor' },
+        { association: 'surgeryRoom' }
       ]
     });
     if (!appointment) {

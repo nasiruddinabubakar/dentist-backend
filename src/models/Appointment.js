@@ -31,9 +31,30 @@ const Appointment = sequelize.define('Appointment', {
       key: 'id'
     }
   },
+  doctorId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Doctors',
+      key: 'id'
+    }
+  },
+  surgeryRoomId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'SurgeryRooms',
+      key: 'id'
+    }
+  },
   appointmentDate: {
     type: DataTypes.DATE,
     allowNull: false
+  },
+  time: {
+    type: DataTypes.TIME,
+    allowNull: true,
+    comment: 'Appointment time (HH:MM:SS format)'
   },
   status: {
     type: DataTypes.ENUM('scheduled', 'completed', 'cancelled', 'no-show'),

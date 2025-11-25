@@ -21,7 +21,13 @@ const InvoiceItem = sequelize.define('InvoiceItem', {
     references: {
       model: 'Services',
       key: 'id'
-    }
+    },
+    comment: 'Reference to service (may be null if service was deleted)'
+  },
+  serviceName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Service name at time of invoice creation (snapshot)'
   },
   description: {
     type: DataTypes.STRING,

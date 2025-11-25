@@ -49,6 +49,21 @@ class InvoiceController {
       next(error);
     }
   }
+
+  async sendInvoice(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { email } = req.body;
+      const clinicId = req.user.clinicId;
+      const invoice = await invoiceService.sendInvoice(id, clinicId, email);
+      res.json({ 
+        message: 'Invoice sent successfully',
+        invoice 
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new InvoiceController();
