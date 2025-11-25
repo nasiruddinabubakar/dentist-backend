@@ -3,9 +3,14 @@
   "version": "1.0.0",
   "description": "Backend API for dentist management system",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=18.x"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "build": "echo 'Build complete'",
+    "postinstall": "node -e \"require('mysql2')\" || echo 'mysql2 check failed'",
     "migrate": "sequelize-cli db:migrate",
     "migrate:undo": "sequelize-cli db:migrate:undo",
     "migrate:undo:all": "sequelize-cli db:migrate:undo:all",

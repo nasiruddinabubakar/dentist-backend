@@ -42,17 +42,27 @@ async function startServer() {
     console.log('Database connection established successfully.');
     console.log('Note: Run migrations with "npm run migrate" before starting the server.');
 
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
+    // Only start listening if not in Vercel serverless environment
+    if (process.env.VERCEL !== '1') {
+      app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      });
+    }
   } catch (error) {
     console.error('Unable to start server:', error);
-    process.exit(1);
+    // Don't exit in serverless environment
+    if (process.env.VERCEL !== '1') {
+      process.exit(1);
+    }
   }
 }
 
-startServer();
+// Only start server if not in Vercel serverless environment
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
 
+// For Vercel serverless, export the app directly
 module.exports = app;
 

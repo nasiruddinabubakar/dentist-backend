@@ -1,6 +1,14 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
+// Ensure mysql2 is available before Sequelize tries to use it
+try {
+  require('mysql2');
+} catch (error) {
+  console.error('mysql2 package is not installed. Please run: npm install mysql2');
+  throw error;
+}
+
 const sequelize = new Sequelize(
   process.env.DB_NAME || 'dentist_db',
   process.env.DB_USER || 'root',
