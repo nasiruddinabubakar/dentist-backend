@@ -64,6 +64,20 @@ class InvoiceController {
       next(error);
     }
   }
+
+  async downloadInvoicePDF(req, res, next) {
+    try {
+      const { id } = req.params;
+      const clinicId = req.user.clinicId;
+      const { buffer, filename } = await invoiceService.downloadInvoicePDF(id, clinicId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new InvoiceController();

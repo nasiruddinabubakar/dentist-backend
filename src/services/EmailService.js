@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const axios = require('axios');
 
 class EmailService {
   constructor() {
@@ -9,6 +10,7 @@ class EmailService {
         pass: process.env.EMAIL_PASS
       }
     });
+    this.pdfApiUrl = process.env.PDF_API_URL || 'https://pdf-service-sada.onrender.com/generate-pdf';
   }
 
   generateInvoiceTemplate(invoice, clinic, patient) {
@@ -16,14 +18,27 @@ class EmailService {
       if (!date) return 'N/A';
       return new Date(date).toLocaleDateString('en-US', {
         year: 'numeric',
-        month: 'long',
+        month: 'short',
         day: 'numeric'
       });
     };
 
     const formatCurrency = (amount) => {
-      return `PKR ${parseFloat(amount).toFixed(2)}`;
+      return `PKR ${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
+
+    const getStatusColor = (status) => {
+      const colors = {
+        paid: { bg: '#d1fae5', text: '#059669', border: '#10b981' }, // Green
+        overdue: { bg: '#fee2e2', text: '#b91c1c', border: '#ef4444' }, // Red
+        sent: { bg: '#dbeafe', text: '#1d4ed8', border: '#3b82f6' }, // Blue
+        draft: { bg: '#f3f4f6', text: '#374151', border: '#9ca3af' }  // Gray
+      };
+      return colors[status] || colors.draft;
+    };
+
+    const statusColor = getStatusColor(invoice.status);
+    const themeColor = '#0891b2'; // Cyan-700 for a professional medical look
 
     return `
 <!DOCTYPE html>
@@ -31,153 +46,183 @@ class EmailService {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Invoice ${invoice.invoiceNumber}</title>
+  <title>Invoice #${invoice.invoiceNumber}</title>
+  <style>
+    @media print {
+      body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; }
+      .no-print { display: none; }
+      .page-break { page-break-inside: avoid; }
+    }
+  </style>
 </head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f7fa; padding: 40px 20px;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #06b6d4 0%, #14b8a6 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">Invoice</h1>
-              <p style="margin: 10px 0 0 0; color: #e0f2fe; font-size: 16px;">${clinic.name || 'Dental Clinic'}</p>
-            </td>
-          </tr>
-          
-          <!-- Invoice Details -->
-          <tr>
-            <td style="padding: 30px;">
+<body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f1f5f9; color: #334155;">
+  
+  <div style="max-width: 800px; margin: 40px auto; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+    
+    <div style="height: 8px; background: ${themeColor}; width: 100%;"></div>
+
+    <div style="padding: 50px;">
+      
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 40px;">
+        <tr>
+          <td style="vertical-align: top;">
+            <h1 style="margin: 0; color: #0f172a; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+              ${clinic.name || 'DENTAL CLINIC'}
+            </h1>
+            <p style="margin: 5px 0 0 0; color: #64748b; font-size: 14px;">Excellence in Care</p>
+          </td>
+          <td align="right" style="vertical-align: top; color: #475569; font-size: 14px; line-height: 1.6;">
+            <strong>${clinic.name || 'Clinic Name'}</strong><br>
+            ${clinic.address || ''}<br>
+            ${clinic.email || ''}<br>
+            ${clinic.phone || ''}
+          </td>
+        </tr>
+      </table>
+
+      <div style="border-top: 1px solid #e2e8f0; margin-bottom: 40px;"></div>
+
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 40px;">
+        <tr>
+          <td width="55%" style="vertical-align: top; padding-right: 20px;">
+            <p style="margin: 0 0 10px 0; color: #94a3b8; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">Bill To</p>
+            <h3 style="margin: 0 0 5px 0; color: #0f172a; font-size: 20px; font-weight: 600;">${patient.name || 'Valued Patient'}</h3>
+            <p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">
+              ${patient.email ? `${patient.email}<br>` : ''}
+              ${patient.phone ? `${patient.phone}<br>` : ''}
+              ${patient.address ? `${patient.address}` : ''}
+            </p>
+          </td>
+
+          <td width="45%" style="vertical-align: top;">
+            <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; border: 1px solid #e2e8f0;">
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td style="padding-bottom: 20px;">
-                    <h2 style="margin: 0; color: #1e293b; font-size: 24px; font-weight: 600;">Invoice #${invoice.invoiceNumber}</h2>
-                    <p style="margin: 5px 0 0 0; color: #64748b; font-size: 14px;">Issue Date: ${formatDate(invoice.issueDate)}</p>
-                    ${invoice.dueDate ? `<p style="margin: 5px 0 0 0; color: #64748b; font-size: 14px;">Due Date: ${formatDate(invoice.dueDate)}</p>` : ''}
-                  </td>
-                  <td align="right" style="padding-bottom: 20px;">
-                    <div style="display: inline-block; padding: 8px 16px; background-color: ${invoice.status === 'paid' ? '#10b981' : invoice.status === 'overdue' ? '#ef4444' : '#3b82f6'}; border-radius: 6px;">
-                      <span style="color: #ffffff; font-size: 12px; font-weight: 600; text-transform: uppercase;">${invoice.status}</span>
-                    </div>
+                  <td colspan="2" style="padding-bottom: 15px;">
+                     <span style="background-color: ${statusColor.bg}; color: ${statusColor.text}; border: 1px solid ${statusColor.border}; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase;">
+                        ${invoice.status}
+                     </span>
                   </td>
                 </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Clinic and Patient Info -->
-          <tr>
-            <td style="padding: 0 30px;">
-              <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td width="50%" style="padding-right: 15px; vertical-align: top;">
-                    <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #06b6d4;">
-                      <h3 style="margin: 0 0 10px 0; color: #1e293b; font-size: 14px; font-weight: 600; text-transform: uppercase;">From</h3>
-                      <p style="margin: 0; color: #475569; font-size: 14px; line-height: 1.6;">
-                        <strong>${clinic.name || 'Dental Clinic'}</strong><br>
-                        ${clinic.address || ''}<br>
-                        ${clinic.phone ? `Phone: ${clinic.phone}` : ''}<br>
-                        ${clinic.email ? `Email: ${clinic.email}` : ''}
-                      </p>
-                    </div>
-                  </td>
-                  <td width="50%" style="padding-left: 15px; vertical-align: top;">
-                    <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #14b8a6;">
-                      <h3 style="margin: 0 0 10px 0; color: #1e293b; font-size: 14px; font-weight: 600; text-transform: uppercase;">Bill To</h3>
-                      <p style="margin: 0; color: #475569; font-size: 14px; line-height: 1.6;">
-                        <strong>${patient.name || 'Patient'}</strong><br>
-                        ${patient.email ? `${patient.email}<br>` : ''}
-                        ${patient.phone ? `Phone: ${patient.phone}` : ''}
-                      </p>
-                    </div>
-                  </td>
+                  <td style="padding-bottom: 8px; color: #64748b; font-size: 13px; font-weight: 500;">Invoice Number</td>
+                  <td align="right" style="padding-bottom: 8px; color: #0f172a; font-size: 14px; font-weight: 700;">#${invoice.invoiceNumber}</td>
                 </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Items Table -->
-          <tr>
-            <td style="padding: 30px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-                <thead>
-                  <tr style="background-color: #f1f5f9;">
-                    <th style="padding: 12px; text-align: left; color: #475569; font-size: 12px; font-weight: 600; text-transform: uppercase; border-bottom: 2px solid #e2e8f0;">Description</th>
-                    <th style="padding: 12px; text-align: center; color: #475569; font-size: 12px; font-weight: 600; text-transform: uppercase; border-bottom: 2px solid #e2e8f0;">Quantity</th>
-                    <th style="padding: 12px; text-align: right; color: #475569; font-size: 12px; font-weight: 600; text-transform: uppercase; border-bottom: 2px solid #e2e8f0;">Unit Price</th>
-                    <th style="padding: 12px; text-align: right; color: #475569; font-size: 12px; font-weight: 600; text-transform: uppercase; border-bottom: 2px solid #e2e8f0;">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${invoice.items && invoice.items.length > 0 ? invoice.items.map(item => `
-                  <tr>
-                    <td style="padding: 15px 12px; border-bottom: 1px solid #e2e8f0; color: #1e293b; font-size: 14px;">
-                      <strong>${item.serviceName || item.description || 'Service'}</strong>
-                    </td>
-                    <td style="padding: 15px 12px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #64748b; font-size: 14px;">${item.quantity || 1}</td>
-                    <td style="padding: 15px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #64748b; font-size: 14px;">${formatCurrency(item.unitPrice || item.price || 0)}</td>
-                    <td style="padding: 15px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #1e293b; font-size: 14px; font-weight: 600;">${formatCurrency(item.total || 0)}</td>
-                  </tr>
-                  `).join('') : '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #64748b;">No items</td></tr>'}
-                </tbody>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Totals -->
-          <tr>
-            <td style="padding: 0 30px 30px 30px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
                 <tr>
-                  <td align="right" style="padding: 8px 0;">
-                    <table align="right" cellpadding="0" cellspacing="0" style="width: 250px;">
-                      <tr>
-                        <td style="padding: 8px 0; color: #64748b; font-size: 14px; text-align: right;">Subtotal:</td>
-                        <td style="padding: 8px 0; padding-left: 20px; color: #1e293b; font-size: 14px; text-align: right; width: 100px;">${formatCurrency(invoice.subtotal || 0)}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0; color: #64748b; font-size: 14px; text-align: right;">Tax:</td>
-                        <td style="padding: 8px 0; padding-left: 20px; color: #1e293b; font-size: 14px; text-align: right;">${formatCurrency(invoice.tax || 0)}</td>
-                      </tr>
-                      <tr style="background-color: #f8fafc; border-top: 2px solid #e2e8f0; border-bottom: 2px solid #e2e8f0;">
-                        <td style="padding: 12px 0; color: #1e293b; font-size: 18px; font-weight: 700; text-align: right;">Total:</td>
-                        <td style="padding: 12px 0; padding-left: 20px; color: #06b6d4; font-size: 18px; font-weight: 700; text-align: right;">${formatCurrency(invoice.total || 0)}</td>
-                      </tr>
-                    </table>
-                  </td>
+                  <td style="padding-bottom: 8px; color: #64748b; font-size: 13px; font-weight: 500;">Issued Date</td>
+                  <td align="right" style="padding-bottom: 8px; color: #0f172a; font-size: 14px; font-weight: 600;">${formatDate(invoice.issueDate)}</td>
                 </tr>
+                ${invoice.dueDate ? `
+                <tr>
+                  <td style="padding-top: 8px; border-top: 1px dashed #cbd5e1; color: #64748b; font-size: 13px; font-weight: 500;">Payment Due</td>
+                  <td align="right" style="padding-top: 8px; border-top: 1px dashed #cbd5e1; color: #ef4444; font-size: 14px; font-weight: 700;">${formatDate(invoice.dueDate)}</td>
+                </tr>
+                ` : ''}
               </table>
-            </td>
-          </tr>
+            </div>
+          </td>
+        </tr>
+      </table>
 
-          <!-- Notes -->
-          ${invoice.notes ? `
-          <tr>
-            <td style="padding: 0 30px 30px 30px;">
-              <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;"><strong>Notes:</strong> ${invoice.notes}</p>
-              </div>
-            </td>
-          </tr>
-          ` : ''}
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
-              <p style="margin: 0; color: #64748b; font-size: 12px; line-height: 1.6;">
-                Thank you for choosing ${clinic.name || 'our clinic'}.<br>
-                If you have any questions about this invoice, please contact us.
-              </p>
-            </td>
-          </tr>
+      <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 30px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+          <thead>
+            <tr style="background-color: #f1f5f9;">
+              <th style="padding: 15px 20px; text-align: left; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Description</th>
+              <th style="padding: 15px 20px; text-align: center; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Qty</th>
+              <th style="padding: 15px 20px; text-align: right; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Price</th>
+              <th style="padding: 15px 20px; text-align: right; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${invoice.items && invoice.items.length > 0 ? invoice.items.map((item, index) => `
+            <tr style="background-color: #ffffff;">
+              <td style="padding: 16px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: 14px; font-weight: 500;">
+                ${item.serviceName || item.description || 'Service'}
+              </td>
+              <td style="padding: 16px 20px; border-bottom: 1px solid #f1f5f9; text-align: center; color: #64748b; font-size: 14px;">${item.quantity || 1}</td>
+              <td style="padding: 16px 20px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b; font-size: 14px;">${formatCurrency(item.unitPrice || item.price || 0)}</td>
+              <td style="padding: 16px 20px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #0f172a; font-size: 14px; font-weight: 600;">${formatCurrency(item.total || 0)}</td>
+            </tr>
+            `).join('') : `
+            <tr>
+              <td colspan="4" style="padding: 40px; text-align: center; color: #94a3b8; font-size: 14px;">No items in this invoice</td>
+            </tr>
+            `}
+          </tbody>
         </table>
-      </td>
-    </tr>
-  </table>
+      </div>
+
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="60%" style="vertical-align: top; padding-right: 40px;">
+            ${invoice.notes ? `
+            <div style="padding-top: 10px;">
+               <p style="margin: 0 0 5px 0; color: #94a3b8; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Notes</p>
+               <p style="margin: 0; color: #64748b; font-size: 13px; line-height: 1.6; font-style: italic;">${invoice.notes}</p>
+            </div>
+            ` : ''}
+          </td>
+
+          <td width="40%" style="vertical-align: top;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Subtotal</td>
+                <td align="right" style="padding: 10px 0; color: #334155; font-size: 14px; font-weight: 600;">${formatCurrency(invoice.subtotal || 0)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Tax</td>
+                <td align="right" style="padding: 10px 0; color: #334155; font-size: 14px; font-weight: 600;">${formatCurrency(invoice.tax || 0)}</td>
+              </tr>
+              <tr>
+                <td colspan="2" style="border-bottom: 2px solid ${themeColor}; padding-bottom: 10px;"></td>
+              </tr>
+              <tr>
+                <td style="padding-top: 15px; color: #0f172a; font-size: 16px; font-weight: 700;">Total Amount</td>
+                <td align="right" style="padding-top: 15px; color: ${themeColor}; font-size: 24px; font-weight: 800;">${formatCurrency(invoice.total || 0)}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <div style="margin-top: 60px; text-align: center; color: #94a3b8; font-size: 12px;">
+        <p style="margin: 0;">Thank you for your trust in ${clinic.name || 'our clinic'}.</p>
+        <p style="margin: 5px 0 0 0;">For questions, please contact ${clinic.phone || 'us'}.</p>
+      </div>
+
+    </div>
+  </div>
 </body>
 </html>
     `;
+  }
+
+  async generateInvoicePDF(invoice, clinic, patient) {
+    try {
+      const htmlContent = this.generateInvoiceTemplate(invoice, clinic, patient);
+      
+      const response = await axios.post(this.pdfApiUrl, {
+        html: htmlContent
+      }, {
+        responseType: 'arraybuffer',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 seconds timeout
+      });
+
+      return Buffer.from(response.data);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      if (error.response) {
+        throw new Error(`PDF generation failed: ${error.response.status} - ${error.response.statusText}`);
+      } else if (error.request) {
+        throw new Error('PDF generation service is unavailable. Please try again later.');
+      } else {
+        throw new Error(`Failed to generate PDF: ${error.message}`);
+      }
+    }
   }
 
   async sendInvoice(invoice, clinic, patient, recipientEmail) {

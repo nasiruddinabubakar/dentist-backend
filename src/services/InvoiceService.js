@@ -251,6 +251,29 @@ class InvoiceService {
 
     return invoice;
   }
+
+  async downloadInvoicePDF(id, clinicId) {
+    const invoice = await this.getInvoiceById(id, clinicId);
+    
+    if (!invoice.patient) {
+      throw new Error('Patient information not found for invoice');
+    }
+
+    // Get clinic information
+    const clinic = await Clinic.findByPk(clinicId);
+    if (!clinic) {
+      throw new Error('Clinic not found');
+    }
+
+    // Generate PDF using EmailService
+    const emailService = require('./EmailService');
+    const pdfBuffer = await emailService.generateInvoicePDF(invoice, clinic, invoice.patient);
+
+    return {
+      buffer: pdfBuffer,
+      filename: `Invoice-${invoice.invoiceNumber}-${new Date().toISOString().split('T')[0]}.pdf`
+    };
+  }
 }
 
 module.exports = new InvoiceService();
