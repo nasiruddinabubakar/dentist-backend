@@ -8,6 +8,7 @@ const appointmentRoutes = require('./appointments');
 const invoiceRoutes = require('./invoices');
 const doctorRoutes = require('./doctors');
 const surgeryRoomRoutes = require('./surgery-rooms');
+const clinicRoutes = require('./clinics');
 
 router.use('/auth', authRoutes);
 router.use('/patients', patientRoutes);
@@ -16,6 +17,7 @@ router.use('/appointments', appointmentRoutes);
 router.use('/invoices', invoiceRoutes);
 router.use('/doctors', doctorRoutes);
 router.use('/surgery-rooms', surgeryRoomRoutes);
+router.use('/clinics', clinicRoutes);
 
 module.exports = router;
 
